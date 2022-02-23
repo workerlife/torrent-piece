@@ -14,6 +14,7 @@ class Piece {
     this._cancellations = null
     this._reservations = 0
     this._flushed = false
+    this._quicks = null
   }
 
   chunkLength (i) {
@@ -28,10 +29,37 @@ class Piece {
     return i * BLOCK_LENGTH
   }
 
+  // 要下哪个 Block
   reserve () {
     if (!this.init()) return -1
     if (this._cancellations.length) return this._cancellations.pop()
-    if (this._reservations < this._chunks) return this._reservations++
+    if (this._quicks.length) {
+      for (let index = this._quicks.keys.length - 1; index >= 0; index--) {
+        let key = this._quicks.keys[index]
+        const element = this._quicks[key]
+        let start = element[0]
+        let end = element[1]
+        let pos = element[2]
+        if (pos > end) {
+          continue
+        }
+        this._quicks[key] = [start, end, pos + 1]
+        return pos
+      }
+    }
+    
+    if (this._quicks.has[this._reservations]) {
+      while (this._reservations < this._chunks && this._quicks.has[this._reservations]) {
+        this._reservations = this._quicks.has[this._reservations][2]
+      }
+      if ( this._reservations < this._chunks) {
+        return this._reservations
+      } 
+    }
+    
+    if ( this._reservations < this._chunks) {
+      return this._reservations++
+    } 
     return -1
   }
 
@@ -46,6 +74,53 @@ class Piece {
       return min
     }
     return -1
+  }
+
+  // 准备请求这个范围的Block
+  _requestRange(start, end) {
+    if (start > end) {
+      return
+    }
+    if (this._quicks.has(start)) {
+      return // 假设 start 和 end 一一对应
+    }
+    if (this._reservations > end) {
+      return
+    }
+    if (this._reservations >= start) {
+      this._quicks[start] = [start, end, this._reservations]
+      return
+    }
+    this._quicks[start] = [start, end, start]
+  }
+
+  // 试图下载这个范围的数据，如果下载完了，返回true, 没完假。
+  flushedRange(start, end) {
+    if (this._flushed) {
+      return true
+    }
+    if (this._quicks[start] === undefined) {
+      this._requestRange(start, end)
+      return flase
+    }
+    let element = this._quicks[start]
+    return element[2] > element[1]
+  }
+
+  // 获取这个范围的数据
+  flushRange(start, end) {
+    if (this._flushed) {
+      return null //此时应该从内存或磁盘读取
+    }
+    if (this.flushedRange(start, end) == false) {
+      return null
+    }
+    if (this._quicks[start] === undefined) {
+      this.requestRange(start, end)
+      return flase
+    }
+    let element = this._quicks[start]
+    return element[2] > element[1]
   }
 
   cancel (i) {
@@ -89,6 +164,7 @@ class Piece {
     this._cancellations = null
     this.sources = null
     this._flushed = true
+    this._quicks = null
     return buffer
   }
 
@@ -97,6 +173,7 @@ class Piece {
     if (this._buffer) return true
     this._buffer = new Array(this._chunks)
     this._cancellations = []
+    this._quicks = new Map()
     this.sources = []
     return true
   }
